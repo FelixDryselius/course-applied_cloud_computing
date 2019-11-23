@@ -1,0 +1,147 @@
+#################
+# A comprehensive implementation of injecting public keys is available on following URL:
+#
+#https://github.com/openstack/heat-templates/blob/master/hot/software-config/example-templates/example-ssh-copy-id.yaml
+#################
+
+
+heat_template_version: 2013-05-23
+
+description: Simple template to deploy a single compute instance
+
+# Declare parameters 
+parameters:
+
+  image:
+    type: string
+    label: Image name or ID
+    description: Image to be used for compute instance
+    default: 4957f15b-e1c9-453e-8940-ca0b10a629c3
+
+  flavor:
+    type: string
+    label: Flavor
+    description: Type of instance (flavor) to be used
+    default: ssc.small
+
+  key:
+    type: string
+    label: Key name
+    description: Name of key-pair to be used for compute instance
+    default: LuxDryselius_lab2
+
+  public_network:
+    type: string
+    label: Public network name or ID
+    description: Public network with floating IP addresses.
+    default: Public External IPv4 Network
+
+# Resource allocation
+resources:
+  cluster_sg:
+    type: OS::Neutron::SecurityGroup
+    properties:
+      name: cluster_felix
+      rules:
+        - protocol: icmp
+        - protocol: tcp
+          port_range_min: 22
+          port_range_max: 22
+ 
+  private_network:
+    type: OS::Neutron::Net
+
+  private_subnet:
+    type: OS::Neutron::Subnet
+    properties:
+      network_id: { get_resource: private_network }
+      cidr: 10.10.10.0/24
+      dns_nameservers:
+        - 130.238.164.6 
+        - 130.238.4.133 
+        - 130.238.7.10
+        - 130.239.1.90
+        - 129.16.1.53
+  router:
+    type: OS::Neutron::Router
+    properties:
+      external_gateway_info:
+        network: { get_param: public_network }
+
+  router-interface:
+    type: OS::Neutron::RouterInterface
+    properties:
+      router_id: { get_resource: router }
+      subnet: { get_resource: private_subnet }
+
+  instance_port0:
+    type: OS::Neutron::Port
+    properties:
+      network: { get_resource: private_network }
+      security_groups:
+        - { get_resource: cluster_sg }
+  instance_port1:
+    type: OS::Neutron::Port
+    properties:
+      network: { get_resource: private_network }
+      security_groups:
+        - { get_resource: cluster_sg }
+ 
+  my_instance0:
+    type: OS::Nova::Server
+    properties:
+      image: { get_param: image }
+      flavor: { get_param: flavor }
+      key_name: { get_param: key }
+      security_groups:
+        - { get_resource: cluster_sg }
+      #networks:
+      #  - port: { get_resource: instance_port0 }         
+      user_data: |
+        #!/bin/sh
+        echo "Hello, World!"
+        echo "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAACAQC6Q4VautZBMAYCb4VhfyGhCGvD9YPE7zeHsSYFyfCCMZxVFJznFBWrOcjMiDG/lMQid1vV+oPaGzfkKTU9X45mojBpsv0hr5uG7A04n0eBq9Br/4moJ6c8SngR/D+huYlsKYt1bFcY1sdjFgyGreskrIloEI1dkqGu7wAlL5qRgjZcZT2QXI0+3wjk36khS+QIk0b4b/tzO3xGP9vIx3oBRxxz6/H6/bYij58qg0r9+wigPzfDpcgZGb/1UKKcRdz1rfClbWvHObRyob0n4WfKZAfc4IcoAnc9R2KiZyr0p0s8WrV3kBmvPzak7FgmBUaJMgtlob6CCrlvnsSUuamQt+21YDPbyWa4GDma3IlOwwKYl7Ys9Y7Z5gGbLG5lCnOaiONUWF4sQZ8Pv28VlNJNNK5CzhdtrNjAvrAfkLMWhbNNL/JYIQznApO6uFzynrwt/Qnhn7v4AvI96PGhfTtUoptO7RiBEHBQPWeg0PKQbqsPNyGiTHgqMI/ehN4VBVohqq0WGyn77/296Frg4L2SqsgOnZlKG1XpLZMMuAZWgAv307bgRpUGTt2ap+6rxROqyaglTlFoKw2H64atl0WmUp0XOxRs85LiEx0LlVSDOcOzrpvgKnPbNdzpCS5tsKbJFNrJQY7V5YUOHu4HECvTNu+y1A9BMc8F3IJfRPuuiw== felix@Ubuntu18" >> /home/ubuntu/.ssh/autorized_keys
+        apt-add-repository -y ppa:ansible/ansible
+        apt-get update -y
+        apt-get upgrade -y
+        apt-get install -y ansible
+      user_data_format: RAW
+
+  my_instance1:
+    type: OS::Nova::Server
+    properties:
+      image: { get_param: image }
+      flavor: { get_param: flavor }
+      key_name: { get_param: key }
+      security_groups:
+        - { get_resource: cluster_sg }
+      #networks:
+      #  - port: { get_resource: instance_port1 }
+      user_data: |
+        #!/bin/sh
+        echo "Hello, World!"
+        echo "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAACAQC6Q4VautZBMAYCb4VhfyGhCGvD9YPE7zeHsSYFyfCCMZxVFJznFBWrOcjMiDG/lMQid1vV+oPaGzfkKTU9X45mojBpsv0hr5uG7A04n0eBq9Br/4moJ6c8SngR/D+huYlsKYt1bFcY1sdjFgyGreskrIloEI1dkqGu7wAlL5qRgjZcZT2QXI0+3wjk36khS+QIk0b4b/tzO3xGP9vIx3oBRxxz6/H6/bYij58qg0r9+wigPzfDpcgZGb/1UKKcRdz1rfClbWvHObRyob0n4WfKZAfc4IcoAnc9R2KiZyr0p0s8WrV3kBmvPzak7FgmBUaJMgtlob6CCrlvnsSUuamQt+21YDPbyWa4GDma3IlOwwKYl7Ys9Y7Z5gGbLG5lCnOaiONUWF4sQZ8Pv28VlNJNNK5CzhdtrNjAvrAfkLMWhbNNL/JYIQznApO6uFzynrwt/Qnhn7v4AvI96PGhfTtUoptO7RiBEHBQPWeg0PKQbqsPNyGiTHgqMI/ehN4VBVohqq0WGyn77/296Frg4L2SqsgOnZlKG1XpLZMMuAZWgAv307bgRpUGTt2ap+6rxROqyaglTlFoKw2H64atl0WmUp0XOxRs85LiEx0LlVSDOcOzrpvgKnPbNdzpCS5tsKbJFNrJQY7V5YUOHu4HECvTNu+y1A9BMc8F3IJfRPuuiw== felix@Ubuntu18" >> /home/ubuntu/.ssh/autorized_keys
+        apt-get update -y
+        apt-get upgrade -y
+      user_data_format: RAW
+
+
+  floating_ip:
+    type: OS::Neutron::FloatingIP
+    properties:
+      floating_network: { get_param: public_network }
+
+  floating_ip_assoc:
+    type: OS::Neutron::FloatingIPAssociation
+    properties:
+      floatingip_id: { get_resource: floating_ip }
+      port_id: { get_resource: instance_port0 } 
+
+# Output in case of successful booting
+outputs:
+  instance_name: 
+    description: LuxDryselius_instance_with_Heat
+    value: { get_attr: [my_instance0, name] }
+  instance_ip:
+    description: IP address of the instance
+    value: { get_attr: [my_instance0, first_address, floating_ip, floating_ip_address] }

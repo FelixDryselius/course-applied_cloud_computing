@@ -1,0 +1,225 @@
+#################
+# A comprehensive implementation of injecting public keys is available on following URL:
+#
+#https://github.com/openstack/heat-templates/blob/master/hot/software-config/example-templates/example-ssh-copy-id.yaml
+#################
+
+
+heat_template_version: 2013-05-23
+
+description: Group8 Airfoil Testing Cluster
+
+# Declare parameters 
+parameters:
+
+  image:
+    type: string
+    label: Image name or ID
+    description: Image to be used for compute instance
+    default: Ubuntu 16.04 LTS (Xenial Xerus) - latest
+
+  flavor:
+    type: string
+    label: Flavor
+    description: Type of instance (flavor) to be used
+    default: ssc.small
+
+  key:
+    type: string
+    label: Key name
+    description: Name of key-pair to be used for compute instance
+    default: groupkey
+
+  public_network:
+    type: string
+    label: Public network name or ID
+    description: Public network with floating IP addresses.
+    default: Public External IPv4 Network
+
+# Resource allocation
+resources:
+  AirfoilG8:
+    type: OS::Neutron::SecurityGroup
+    properties:
+      name: AirfoilG8
+      rules:
+        - protocol: icmp
+        - protocol: tcp
+          port_range_min: 22
+          port_range_max: 22
+        - protocol: icmp
+        - protocol: tcp
+          port_range_min: 3306
+          port_range_min: 3306
+        - protocol: icmp
+        - protocol: tcp
+          port_range_min: 5000
+          port_range_max: 5000
+        - protocol: icmp
+        - protocol: tcp
+          port_range_min: 5672
+          port_range_max: 5672
+
+ 
+  private_network:
+    type: OS::Neutron::Net
+
+  private_subnet:
+    type: OS::Neutron::Subnet
+    properties:
+      network_id: { get_resource: private_network }
+      cidr: 10.10.10.0/24
+      dns_nameservers:
+        - 130.238.164.6 
+        - 130.238.4.133 
+        - 130.238.7.10
+        - 130.239.1.90
+        - 129.16.1.53
+  router:
+    type: OS::Neutron::Router
+    properties:
+      external_gateway_info:
+        network: { get_param: public_network }
+
+  router-interface:
+    type: OS::Neutron::RouterInterface
+    properties:
+      router_id: { get_resource: router }
+      subnet: { get_resource: private_subnet }
+
+  instance_port0:
+    type: OS::Neutron::Port
+    properties:
+      network: { get_resource: private_network }
+      security_groups:
+        - { get_resource: AirfoilG8 }
+  instance_port1:
+    type: OS::Neutron::Port
+    properties:
+      network: { get_resource: private_network }
+      security_groups:
+        - { get_resource: AirfoilG8 }
+  instance_port2:
+    type: OS::Neutron::Port
+    properties:
+      network: { get_resource: private_network }
+      security_groups:
+        - { get_resource: AirfoilG8 }
+
+  master:
+    type: OS::Nova::Server
+    properties:
+      image: { get_param: image }
+      flavor: { get_param: flavor }
+      key_name: { get_param: key }      
+      networks:
+        - port: { get_resource: instance_port2 }
+      user_data: |
+        #!/bin/bash
+        #STARUP
+        echo "AAAAB3NzaC1yc2EAAAADAQABAAABAQC0mQVQ9hn2ns0R0bk1ud2XzltbJ86ynUMmFumVGe8uQEyxQncnW9UrCw+YLPQ9oBiUegzmTKBF6tx4jzOj2RyocFlq6Qkl/Aog7w70qSFEEc9ZR8EjigGe89FkRo/F6mU5kYiJFIJ3NyCeNXN6+IMlwO6yuZB/izWli8CwKZw8XPEqZ8HiK0eUaOGLhXm9jo0lUpPHLpTqo5cWQXRr6M7CMuX2t/vFD2rTnY/ddeswbIkrmFkNysfVfr1le26x72Tf3CxtCTd3Lkds+ide/Z/sUDRc0ZQTL0GY8ecU4/xNiVO7WHkZbLQ7XyS8LoqfWPzBYf0K6F2JhO5cxprfyI7H" >> /home/ubuntu/.ssh/authorized_keys
+        apt-get -y update
+        apt-get -y upgrade
+        #INSTALLING PYHTON3 AND CELERY
+        apt-get install -y python3-pip
+        pip3 install --upgrade pip
+        export LC_ALL=C
+        pip install celery==3.1.25
+        pip install Flask
+        pip install mysql-connector-python
+        apt-get install -y rabbitmq-server
+        rabbitmqctl add_user airfoil group8
+        rabbitmqctl add_vhost g8host
+        rabbitmqctl set_permissions -p g8host airfoil ".*" ".*" ".*"
+        git clone https://github.com/areebasad/Applied-Cloud-Computing-Project-Group-8.git
+        cd Applied-Cloud-Computing-Project-Group-8/flask_app
+        #source 
+        #python3 master.py &
+        #SETUP CELERY AND RUN IT
+        user_data_format: RAW
+
+  yowu_worker1:
+    type: OS::Nova::Server
+    properties:
+      image: { get_param: image }
+      flavor: { get_param: flavor }
+      key_name: { get_param: key }
+      #security_groups:
+        #- { get_resource: AirfoilG8 }
+      networks:
+        - port: { get_resource: instance_port0 }         
+      user_data: |
+        #!/bin/bash
+        #STARTUP
+        echo "Hello, World!"
+        echo "AAAAB3NzaC1yc2EAAAADAQABAAABAQC0mQVQ9hn2ns0R0bk1ud2XzltbJ86ynUMmFumVGe8uQEyxQncnW9UrCw+YLPQ9oBiUegzmTKBF6tx4jzOj2RyocFlq6Qkl/Aog7w70qSFEEc9ZR8EjigGe89FkRo/F6mU5kYiJFIJ3NyCeNXN6+IMlwO6yuZB/izWli8CwKZw8XPEqZ8HiK0eUaOGLhXm9jo0lUpPHLpTqo5cWQXRr6M7CMuX2t/vFD2rTnY/ddeswbIkrmFkNysfVfr1le26x72Tf3CxtCTd3Lkds+ide/Z/sUDRc0ZQTL0GY8ecU4/xNiVO7WHkZbLQ7XyS8LoqfWPzBYf0K6F2JhO5cxprfyI7H" >> /home/ubuntu/.ssh/authorized_keys
+        #INSTALLING DOCKER
+        curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo apt-key add -
+        add-apt-repository "deb [arch=amd64] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable"
+        apt-get update -y
+        apt-get upgrade -y
+        apt-cache policy docker-ce
+        apt-get install -y docker-ce
+        echo "Docker installed"
+        #SETTING UP AND RUNNING DOCKER
+        touch /etc/docker/daemon.json
+        echo "{ \"mtu\":1450 }" >> /etc/docker/daemon.json
+        systemctl restart docker
+        echo "Daeomn.json fixed"
+        docker run --name foobar -dt -v $(pwd):/home/fenics/shared -w /home/fenics/shared quay.io/fenicsproject/stable:current
+        echo "Docker Run"
+        docker ps
+        #git clone https://github.com/Sprogis/murtazo.git
+        #docker cp murtazo/murtazo.tgz foobar:/home/fenics/shared/.
+        docker exec -i foobar /bin/bash -c 'git clone https://github.com/Sprogis/murtazo.git'
+        docker exec -i foobar /bin/bash -c 'mv murtazo/murtazo.tgz .; tar -xzvf murtazo.tgz'
+        #tar -xzvf murtazo.tgz 
+        docker exec -i foobar /bin/bash -c 'cd murtazo; tar -xvf cloudnaca.tgz; tar -xvf navier_stokes_solver.tar'
+        #tar -xvf cloudnaca.tgz
+        #tar -xvf navier_stokes_solver.tar
+        docker exec -i foobar /bin/bash -c 'cd murtazo/navier_stokes_solver/src; ./compile_forms; cd ..; cmake .; make -j 2; cd ../cloudnaca; apt-get update; apt-get install -y gmsh'
+        docker exec -i foobar sed -i '\/Applications\/Gmsh.app\/Contents\/MacOS\/gmsh/c\GMSHBIN=\"\/usr\/bin\/gmsh\"' murtazo/cloudnaca/runme.sh
+        docker exec -i foobar /bin/bash -c 'apt install -y python-numpy'
+        docker exec -i foobar /bin/bash -c 'cd murtazo/cloudnaca; ./runme.sh 0 30 10 200 3; cd msh'
+        docker exec -i foobar /bin/bash -c 'cd murtazo/cloudnaca/msh; for file in *.msh; do dolfin-convert "$file" "${file/%.msh/.xml}" ; done'
+        #./compile_forms
+        #cd ..
+        #cmake .
+        #make -j 2
+        #cd ../cloudnaca
+        #apt-get update
+        #apt-get install -y gmsh 
+        #sed -i '\/Applications\/Gmsh.app\/Contents\/MacOS\/gmsh/c\GMSHBIN=\"\/usr\/bin\/gmsh\"' runme.sh
+        #apt install -y python-numpy
+        #./runme.sh 0 30 10 200 3
+        #cd msh
+        docker exec -i foobar /bin/bash -c "cd murtazo/navier_stokes_solver; git clone https://github.com/areebasad/Applied-Cloud-Computing-Project-Group-8.git; mv Applied-Cloud-Computing-Project-Group-8/flask_app/* ."
+        docker exec -i foobar apt-get install -y python3-pip
+        docker exec -i foobar pip3 install --upgrade pip
+        docker exec -i foobar export LC_ALL=C
+        docker exec -i foobar pip install celery==3.1.25
+        docker exec -i foobar pip install Flask
+        docker exec -i foobar pip install mysql-connector-python
+        #docker exec -i foobar /bin/bash -c 'export C_FORCE_ROOT=1; cd murtazo/navier_stokes_solver; nohup celery -A tasks worker -l info &'
+
+      user_data_format: RAW
+
+  floating_ip:
+    type: OS::Neutron::FloatingIP
+    properties:
+      floating_network: { get_param: public_network }
+
+  floating_ip_assoc:
+    type: OS::Neutron::FloatingIPAssociation
+    properties:
+      floatingip_id: { get_resource: floating_ip }
+      port_id: { get_resource: instance_port0} 
+
+# Output in case of successful booting
+outputs:
+  instance_name:
+    description: Name of the instance
+    value: { get_attr: [yowu_worker1, name] }
+  instance_ip:
+    description: IP address of the instance
+    value: { get_attr: [yowu_worker1, first_address, floating_ip, floating_ip_address] }

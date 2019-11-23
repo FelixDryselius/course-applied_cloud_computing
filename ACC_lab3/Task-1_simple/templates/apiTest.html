@@ -1,0 +1,22 @@
+<html>
+  <head>
+    <title>apiTest example</title>
+    <style>
+        .progress {
+            width: 100%;
+            text-align: center;
+        }
+    </style>
+  </head>
+  <body>
+    <h1>apiTest example</h1>
+    <form  method="POST" action="/">
+      <p>Number of calls: <input type="text" name="number_of_calls" value="{{ number_of_calls }}"></p>
+    <input type="submit" name="get_pronouns_button" value="Get pronouns">
+  </form>
+    {% for message in get_flashed_messages() %}
+    <p style="color: red;">{{ message }}</p>
+    {% endfor %}
+    {% block image %}{% endblock %}
+  </body>
+</html>

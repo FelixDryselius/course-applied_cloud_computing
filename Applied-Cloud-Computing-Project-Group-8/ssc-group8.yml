@@ -1,0 +1,213 @@
+
+#################
+# A comprehensive implementation of injecting public keys is available on following URL:
+#
+#https://github.com/openstack/heat-templates/blob/master/hot/software-config/example-templates/example-ssh-copy-id.yaml
+#################
+
+
+heat_template_version: 2013-05-23
+
+description: Group8 Airfoil Testing Cluster
+
+# Declare parameters 
+parameters:
+
+  image:
+    type: string
+    label: Image name or ID
+    description: Image to be used for compute instance
+    default: Ubuntu 16.04 LTS (Xenial Xerus) - latest
+
+  image_slave:
+    type: string
+    label: Image ID of slave image
+    default: G8_worker
+
+  flavor:
+    type: string
+    label: Flavor
+    description: Type of instance (flavor) to be used
+    default: 8d704ef9-74dc-495e-9e2b-baebc6775b16
+
+  key:
+    type: string
+    label: Key name
+    description: Name of key-pair to be used for compute instance
+    default: groupkey
+
+  public_network:
+    type: string
+    label: Public network name or ID
+    description: Public network with floating IP addresses.
+    default: Public External IPv4 Network
+  
+  node_count:
+    type: number
+    default: 2
+    description: Default number of nodes
+  
+  private_network_name:
+    type: string
+    default: g8_private_network
+
+# Resource allocation
+resources:
+  AirfoilG8:
+    type: OS::Neutron::SecurityGroup
+    properties:
+      name: AirfoilG8
+      rules:
+        - protocol: icmp
+        - protocol: tcp
+          port_range_min: 22
+          port_range_max: 22
+        - protocol: icmp
+        - protocol: tcp
+          port_range_min: 3306
+          port_range_max: 3306
+        - protocol: icmp
+        - protocol: tcp
+          port_range_min: 5000
+          port_range_max: 5000
+        - protocol: icmp
+        - protocol: tcp
+          port_range_min: 5555
+          port_range_max: 5555
+        - protocol: icmp
+        - protocol: tcp
+          port_range_min: 5672
+          port_range_max: 5672
+        - protocol: icmp
+        - protocol: tcp
+          port_range_min: 15672
+          port_range_max: 15672
+
+ 
+  private_network:
+    type: OS::Neutron::Net
+    properties:
+      name: { get_param: private_network_name }
+
+  private_subnet:
+    type: OS::Neutron::Subnet
+    properties:
+      network_id: { get_resource: private_network }
+      cidr: 10.10.10.0/24
+      gateway_ip: 10.10.10.1
+      allocation_pools: [{ start: 10.10.10.100, end: 10.10.10.150 }]
+      dns_nameservers:
+        - 130.238.164.6 
+        - 130.238.4.133 
+        - 130.238.7.10
+        - 130.239.1.90
+        - 129.16.1.53
+  router:
+    type: OS::Neutron::Router
+    properties:
+      external_gateway_info:
+        network: { get_param: public_network }
+
+  router-interface:
+    type: OS::Neutron::RouterInterface
+    properties:
+      router_id: { get_resource: router }
+      subnet: { get_resource: private_subnet }
+
+  instance_port0:
+    type: OS::Neutron::Port
+    properties:
+      network: { get_resource: private_network }
+      fixed_ips:
+        [
+          {
+            "subnet" : {get_resource: private_subnet},
+            "ip_address" : 10.10.10.8,
+          },
+        ]
+      security_groups:
+        - { get_resource: AirfoilG8 }
+
+  worker_port:
+    type: OS::Neutron::Port
+    properties:
+      network: { get_resource: private_network }
+      security_groups:
+        - { get_resource: AirfoilG8 }
+
+  master:
+    type: OS::Nova::Server
+    properties:
+      image: { get_param: image }
+      flavor: { get_param: flavor }
+      key_name: { get_param: key }
+      networks:
+        - port: { get_resource: instance_port0 }
+      user_data: |
+        #!/bin/bash
+        #STARUP
+        echo "AAAAB3NzaC1yc2EAAAADAQABAAABAQC0mQVQ9hn2ns0R0bk1ud2XzltbJ86ynUMmFumVGe8uQEyxQncnW9UrCw+YLPQ9oBiUegzmTKBF6tx4jzOj2RyocFlq6Qkl/Aog7w70qSFEEc9ZR8EjigGe89FkRo/F6mU5kYiJFIJ3NyCeNXN6+IMlwO6yuZB/izWli8CwKZw8XPEqZ8HiK0eUaOGLhXm9jo0lUpPHLpTqo5cWQXRr6M7CMuX2t/vFD2rTnY/ddeswbIkrmFkNysfVfr1le26x72Tf3CxtCTd3Lkds+ide/Z/sUDRc0ZQTL0GY8ecU4/xNiVO7WHkZbLQ7XyS8LoqfWPzBYf0K6F2JhO5cxprfyI7H" >> /home/ubuntu/.ssh/authorized_keys
+        apt-get -y update
+        apt-get -y upgrade
+        #INSTALLING PYHTON3 AND CELERY
+        apt-get install -y python3-pip
+        pip3 install --upgrade pip
+        export LC_ALL=C
+        pip install celery==3.1.25
+        pip install Flask
+        pip install wheel flower
+        pip install mysql-connector-python
+        apt-get install -y rabbitmq-server
+        rabbitmqctl add_user airfoil group8
+        rabbitmqctl add_vhost g8host
+        rabbitmqctl set_user_tags airfoil administrator
+        rabbitmqctl set_permissions -p g8host airfoil ".*" ".*" ".*"
+        git clone https://github.com/areebasad/Applied-Cloud-Computing-Project-Group-8.git
+        cd Applied-Cloud-Computing-Project-Group-8/flask_app
+        source db_broker_source_file.sh
+        python3 master.py &
+        celery -A tasks flower --port=5555
+        user_data_format: RAW
+
+  airfoil_worker:
+    type: OS::Heat::ResourceGroup
+    properties:
+      count: { get_param: node_count }
+      resource_def:
+        type: OS::Nova::Server
+        properties:
+          name: g8-airfoil-worker-%index%
+          image: { get_param: image_slave }
+          flavor: { get_param: flavor }
+          key_name: { get_param: key }
+          #security_groups:
+            #- { get_resource: AirfoilG8 }
+          networks:
+            - network: { get_resource: private_network }
+          user_data_format: RAW
+          user_data: |
+            #!/bin/bash
+            echo "Hello, World!"
+            docker start foobar
+            docker exec -i foobar /bin/bash -c 'export C_FORCE_ROOT=1; cd murtazo/navier_stokes_solver; source db_worker_source_file.sh; nohup celery -A tasks worker -l info &'
+            #START CELERY WORKER IN CONTAINER BELOW
+
+  floating_ip:
+    type: OS::Neutron::FloatingIP
+    properties:
+      floating_network: { get_param: public_network }
+
+  floating_ip_assoc:
+    type: OS::Neutron::FloatingIPAssociation
+    properties:
+      floatingip_id: { get_resource: floating_ip }
+      port_id: { get_resource: instance_port0} 
+
+# Output in case of successful booting
+outputs:
+  instance_name:
+    description: Name of the instance
+    value: { get_attr: [master, name] }
+  instance_ip:
+    description: IP address of the instance
+    value: { get_attr: [master, first_address, floating_ip, floating_ip_address] }
