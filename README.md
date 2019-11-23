@@ -1,1 +1,1 @@
-# course-applied_cloud_computing
+# Repositories form the course "Applied Cloud Computing", Uppsala University fall 2019
